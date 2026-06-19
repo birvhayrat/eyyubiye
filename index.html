@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مركز الأيوبية | العطلة عطلة دراسة ليست عطلة صلاة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+
+        // إعدادات فايربيس الخاصة بمشروعك
+        const firebaseConfig = {
+          apiKey: "AIzaSyDkk2uq_eZ62ZZZU5KqWiYBWdOOO22EPXo",
+          authDomain: "pray-for-allah.firebaseapp.com",
+          databaseURL: "https://pray-for-allah-default-rtdb.firebaseio.com",
+          projectId: "pray-for-allah",
+          storageBucket: "pray-for-allah.firebasestorage.app",
+          messagingSenderId: "981002730115",
+          appId: "1:981002730115:web:61acf9981484e5300179b6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // التواريخ المحددة للمسابقة (2026)
+        const startDate = new Date("2026-06-26T00:00:00").getTime();
+        const endDate = new Date("2026-07-26T23:59:59").getTime();
+
+        // العداد التنازلي والتحقق من وقت المسابقة
+        function updateCountdown() {
+            const now = new Date().getTime();
+            const distance = startDate - now;
+
+            if (distance > 0) {
+                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                
+                document.getElementById("countdown-box").classList.remove("hidden");
+                document.getElementById("timer").innerHTML = `${days} يوم و ${hours} ساعة و ${minutes} دقيقة و ${seconds} ثانية`;
+                window.isContestStarted = false;
+            } else {
+                document.getElementById("countdown-box").classList.add("hidden");
+                window.isContestStarted = true;
+            }
+        }
+        setInterval(updateCountdown, 1000);
+        updateCountdown();
+
+        // تلقائي لتنسيق تاريخ الميلاد يدويًا (مثال: 22082013 لتصبح 22/08/2013)
+        document.getElementById("dob").addEventListener("input", function(e) {
+            let val = e.target.value.replace(/\D/g, '');
+            if (val.length > 8) val = val.substring(0,8);
+            if (val.length >= 4) {
+                val = val.substring(0,2) + '/' + val.substring(2,4) + '/' + val.substring(4);
+            } else if (val.length >= 2) {
+                val = val.substring(0,2) + '/' + val.substring(2);
+            }
+            e.target.value = val;
+        });
+
+        // التنقل بين الشاشات
+        window.showScreen = function(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        // إنشاء حساب
+        document.getElementById("register-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const identifier = document.getElementById("reg-id").value.trim(); // إيميل أو هاتف
+            const pass1 = document.getElementById("reg-pass1").value;
+            const pass2 = document.getElementById("reg-pass2").value;
+            const isAdmin = document.getElementById("reg-admin").checked;
+            const adminCode = document.getElementById("reg-admin-code").value;
+
+            if(pass1 !== pass2) return alert("كلمات السر غير متطابقة!");
+
+            if(isAdmin && adminCode !== "136479") {
+                return alert("كلمة سر الآدمن خاطئة! لا يمكنك إنشاء حساب مسؤول.");
+            }
+
+            const userRef = doc(db, "users", identifier);
+            const userSnap = await getDoc(userRef);
+            if(userSnap.exists()) return alert("هذا الحساب مسجل مسبقاً!");
+
+            const userData = {
+                firstName: document.getElementById("reg-fname").value,
+                lastName: document.getElementById("reg-lname").value,
+                identifier: identifier,
+                password: pass1,
+                dob: document.getElementById("dob").value,
+                gender: document.getElementById("reg-gender").value,
+                role: isAdmin ? "admin" : "student",
+                points: 0,
+                status: "active"
+            };
+
+            await setDoc(userRef, userData);
+            alert("تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.");
+            showScreen("login-screen");
+        });
+
+        // إظهار حقل كود الآدمن عند الاختيار
+        document.getElementById("reg-admin").addEventListener("change", function(e) {
+            document.getElementById("admin-code-box").classList.toggle("hidden", !e.target.checked);
+        });
+
+        // تسجيل الدخول
+        document.getElementById("login-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = document.getElementById("login-id").value.trim();
+            const pass = document.getElementById("login-pass").value;
+
+            const userRef = doc(db, "users", id);
+            const userSnap = await getDoc(userRef);
+
+            if(!userSnap.exists() || userSnap.data().password !== pass) {
+                return alert("بيانات تسجيل الدخول غير صحيحة!");
+            }
+
+            const user = userSnap.data();
+
+            if(user.status === "banned") {
+                return alert("تم استبعادك من المسابقة!");
+            }
+
+            // منع الطالب من الدخول قبل بدء المسابقة
+            if(user.role === "student" && !window.isContestStarted) {
+                return alert("لم تبدأ المسابقة بعد! يمكنك الدخول بدءاً من 26 حزيران.");
+            }
+
+            window.currentUser = user;
+            if(user.role === "admin") {
+                loadAdminDashboard();
+            } else {
+                loadStudentDashboard();
+            }
+        });
+
+        // لوحة تحكم الطالب
+        function loadStudentDashboard() {
+            showScreen("student-screen");
+            document.getElementById("student-name").innerText = `${window.currentUser.firstName} ${window.currentUser.lastName}`;
+            document.getElementById("student-points").innerText = window.currentUser.points;
+
+            const prayersDiv = document.getElementById("prayers-list");
+            prayersDiv.innerHTML = "";
+            const prayers = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
+
+            prayers.forEach(prayer => {
+                let optionsHtml = "";
+                if(window.currentUser.gender === "ذكر") {
+                    optionsHtml = `
+                        <label class="block"><input type="radio" name="${prayer}" value="0" checked> لم أصلِّ (0)</label>
+                        <label class="block"><input type="radio" name="${prayer}" value="1"> صليت بالبيت (1)</label>
+                        <label class="block"><input type="radio" name="${prayer}" value="2"> صليت بالمسجد (2)</label>
+                    `;
+                } else {
+                    optionsHtml = `
+                        <label class="block"><input type="radio" name="${prayer}" value="0" checked> لم أصلِّ (0)</label>
+                        <label class="block"><input type="radio" name="${prayer}" value="2"> صليت (2)</label>
+                    `;
+                }
+
+                prayersDiv.innerHTML += `
+                    <div class="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                        <h4 class="font-bold text-amber-400 mb-2">${prayer}</h4>
+                        <div class="space-y-1 text-sm text-slate-200">${optionsHtml}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // حفظ نقاط اليوم للطالب
+        document.getElementById("submit-prayers").addEventListener("click", async () => {
+            const prayers = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
+            let todayPoints = 0;
+            prayers.forEach(prayer => {
+                const checkedOpt = document.querySelector(`input[name="${prayer}"]:checked`);
+                if(checkedOpt) todayPoints += parseInt(checkedOpt.value);
+            });
+
+            const newPoints = window.currentUser.points + todayPoints;
+            const userRef = doc(db, "users", window.currentUser.identifier);
+            await updateDoc(userRef, { points: newPoints });
+
+            window.currentUser.points = newPoints;
+            document.getElementById("student-points").innerText = newPoints;
+            alert(`تم حفظ صلواتك اليوم بنجاح وكسبت ${todayPoints} نقاط!`);
+        });
+
+        // لوحة تحكم الآدمن
+        async function loadAdminDashboard() {
+            showScreen("admin-screen");
+            const listDiv = document.getElementById("students-list");
+            listDiv.innerHTML = "<p class='text-slate-400'>جاري تحميل الطلاب...</p>";
+
+            const querySnapshot = await getDocs(collection(db, "users"));
+            listDiv.innerHTML = "";
+
+            querySnapshot.forEach((docSnap) => {
+                const student = docSnap.data();
+                if(student.role === "admin") return; // تخطي المسئولين الآخرين
+
+                const tr = document.createElement("tr");
+                tr.className = "border-b border-slate-700 hover:bg-slate-700/30 cursor-pointer";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-amber-400">${student.firstName} ${student.lastName}</td>
+                    <td class="p-3 text-center">${student.points}</td>
+                    <td class="p-3 text-center">${student.gender}</td>
+                    <td class="p-3 text-center"><span class="px-2 py-1 rounded text-xs ${student.status==='active'?'bg-green-500/20 text-green-400':'bg-red-500/20 text-red-400'}">${student.status}</span></td>
+                `;
+                tr.addEventListener("click", () => showStudentDetails(student));
+                listDiv.appendChild(tr);
+            });
+        }
+
+        // تفاصيل الطالب عند الضغط عليه من قبل الآدمن
+        function showStudentDetails(student) {
+            document.getElementById("detail-box").classList.remove("hidden");
+            document.getElementById("det-name").innerText = `${student.firstName} ${student.lastName}`;
+            document.getElementById("det-id").innerText = student.identifier;
+            document.getElementById("det-pass").innerText = student.password;
+            document.getElementById("det-dob").innerText = student.dob;
+            document.getElementById("det-gender").innerText = student.gender;
+            document.getElementById("det-points").innerText = student.points;
+
+            // أزرار التحكم بالنقاط والطرد
+            document.getElementById("btn-add-pts").onclick = async () => {
+                let pts = parseInt(prompt("أدخل عدد النقاط لإضافتها:"));
+                if(!isNaN(pts)) {
+                    await updateDoc(doc(db, "users", student.identifier), { points: student.points + pts });
+                    student.points += pts; showStudentDetails(student); loadAdminDashboard();
+                }
+            };
+
+            document.getElementById("btn-sub-pts").onclick = async () => {
+                let pts = parseInt(prompt("أدخل عدد النقاط لخصمها:"));
+                if(!isNaN(pts)) {
+                    await updateDoc(doc(db, "users", student.identifier), { points: Math.max(0, student.points - pts) });
+                    student.points = Math.max(0, student.points - pts); showStudentDetails(student); loadAdminDashboard();
+                }
+            };
+
+            document.getElementById("btn-kick").onclick = async () => {
+                if(confirm("هل أنت متأكد من استبعاد هذا الطالب؟")) {
+                    await updateDoc(doc(db, "users", student.identifier), { status: "banned" });
+                    alert("تم استبعاد الطالب."); document.getElementById("detail-box").classList.add("hidden"); loadAdminDashboard();
+                }
+            };
+        }
+
+        // تسجيل الخروج
+        window.logout = function() {
+            window.currentUser = null;
+            showScreen("login-screen");
+        }
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen">
+
+    <header class="bg-slate-800 border-b border-amber-500/30 p-5 shadow-lg sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-black text-amber-400">مركز البر والخيرات (الأيوبية)</h1>
+                <p class="text-xs text-slate-400 mt-1 font-bold">العطلة عطلة دراسة ليست عطلة صلاة 🕌</p>
+            </div>
+            <div id="countdown-box" class="hidden bg-slate-900 px-4 py-2 rounded-full border border-amber-500 text-center text-xs md:text-sm">
+                <span class="text-amber-400 font-bold">بدء المسابقة بعد: </span> <span id="timer" class="font-mono text-white"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 mt-6">
+
+        <section id="login-screen" class="screen bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-md mx-auto">
+            <h2 class="text-xl font-bold text-center text-amber-400 mb-6">تسجيل الدخول للمسابقة</h2>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm mb-1 text-slate-300">البريد الإلكتروني أو رقم الهاتف</label>
+                    <input type="text" id="login-id" required class="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-600 focus:border-amber-400 outline-none text-white">
+                </div>
+                <div>
+                    <label class="block text-sm mb-1 text-slate-300">كلمة السر</label>
+                    <input type="password" id="login-pass" required class="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-600 focus:border-amber-400 outline-none text-white">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 font-bold rounded-lg text-slate-900 transition shadow-lg">دخول</button>
+            </form>
+            <p class="text-center text-sm text-slate-400 mt-4">ليس لديك حساب؟ <button onclick="showScreen('register-screen')" class="text-amber-400 underline font-bold">إنشاء حساب جديد</button></p>
+        </section>
+
+        <section id="register-screen" class="screen hidden bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-md mx-auto">
+            <h2 class="text-xl font-bold text-center text-amber-400 mb-6">إنشاء حساب جديد بالمركز</h2>
+            <form id="register-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">الاسم الأول</label>
+                        <input type="text" id="reg-fname" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">الكنية (العائلة)</label>
+                        <input type="text" id="reg-lname" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm mb-1 text-slate-300">البريد أو رقم الهاتف (للدخول به)</label>
+                    <input type="text" id="reg-id" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">كلمة السر</label>
+                        <input type="password" id="reg-pass1" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">تأكيد كلمة السر</label>
+                        <input type="password" id="reg-pass2" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">تاريخ الميلاد (أرقام فقط)</label>
+                        <input type="text" id="dob" placeholder="22082013" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-300">الجنس</label>
+                        <select id="reg-gender" class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
+                            <option>ذكر</option>
+                            <option>أنثى</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center p-2 bg-slate-900 rounded-lg">
+                    <input type="checkbox" id="reg-admin" class="ml-2 w-4 h-4 text-amber-500">
+                    <label for="reg-admin" class="text-sm font-bold text-amber-400">إنشاء حساب مسؤول (آدمن)</label>
+                </div>
+                <div id="admin-code-box" class="hidden">
+                    <label class="block text-sm mb-1 text-red-400 font-bold">كلمة سر صلاحية الآدمن المطلوبة</label>
+                    <input type="password" id="reg-admin-code" class="w-full p-2 rounded-lg bg-slate-900 border border-red-500 text-white">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-green-600 hover:bg-green-700 font-bold rounded-lg text-white transition shadow-lg">تأكيد التسجيل</button>
+            </form>
+            <p class="text-center text-sm text-slate-400 mt-4">لديك حساب بالفعل؟ <button onclick="showScreen('login-screen')" class="text-amber-400 underline font-bold">سجل دخولك</button></p>
+        </section>
+
+        <section id="student-screen" class="screen hidden bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-xl mx-auto">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-4 mb-6">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-400">أهلاً بك يا بطل 👋</h3>
+                    <span id="student-name" class="text-xl font-black text-amber-400"></span>
+                </div>
+                <div class="text-left">
+                    <span class="block text-xs text-slate-400">مجموع نقاطك</span>
+                    <span id="student-points" class="text-3xl font-black text-green-400 font-mono">0</span>
+                </div>
+            </div>
+            
+            <p class="text-sm text-center mb-4 bg-amber-500/10 text-amber-400 p-2 rounded border border-amber-500/20">اختر صلواتك التي أديتها اليوم لتحديث نقاطك:</p>
+            <div id="prayers-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+            
+            <div class="flex gap-2">
+                <button id="submit-prayers" class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-lg transition text-center shadow-md">حفظ صلوات اليوم ✅</button>
+                <button onclick="logout()" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold">خروج</button>
+            </div>
+        </section>
+
+        <section id="admin-screen" class="screen hidden space-y-6">
+            <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-black text-amber-400">لوحة تحكم إدارة مركز الأيوبية 👑</h2>
+                    <button onclick="logout()" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg">تسجيل خروج</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-right border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-600 bg-slate-900 text-slate-300 text-sm">
+                                <th class="p-3">اسم الطالب</th>
+                                <th class="p-3 text-center">النقاط</th>
+                                <th class="p-3 text-center">الجنس</th>
+                                <th class="p-3 text-center">الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="students-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="detail-box" class="hidden bg-slate-800 p-6 rounded-2xl border-2 border-amber-500 shadow-2xl space-y-4">
+                <h3 class="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">بيانات تفصيلية للتحكم بالطالب</h3>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-slate-900 p-4 rounded-xl">
+                    <p><span class="text-slate-400 block">الاسم:</span> <strong id="det-name" class="text-white text-base"></strong></p>
+                    <p><span class="text-slate-400 block">المعرّف (التواصل):</span> <strong id="det-id" class="text-slate-200 font-mono"></strong></p>
+                    <p><span class="text-slate-400 block text-red-400 font-bold">كلمة السر:</span> <strong id="det-pass" class="text-red-400 font-mono text-base"></strong></p>
+                    <p><span class="text-slate-400 block">تاريخ الميلاد:</span> <strong id="det-dob" class="text-white"></strong></p>
+                    <p><span class="text-slate-400 block">الجنس:</span> <strong id="det-gender" class="text-white"></strong></p>
+                    <p><span class="text-slate-400 block">النقاط الحالية:</span> <strong id="det-points" class="text-green-400 font-mono text-lg"></strong></p>
+                </div>
+                <div class="flex flex-wrap gap-2 pt-2">
+                    <button id="btn-add-pts" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-xs font-bold text-white rounded-lg">+ إضافة نقاط</button>
+                    <button id="btn-sub-pts" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-xs font-bold text-white rounded-lg">- خصم نقاط</button>
+                    <button id="btn-kick" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-xs font-bold text-white rounded-lg">طرد واستبعاد الطالب 🛑</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>
