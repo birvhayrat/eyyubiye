@@ -8,7 +8,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
         const firebaseConfig = {
           apiKey: "AIzaSyDkk2uq_eZ62ZZZU5KqWiYBWdOOO22EPXo",
@@ -23,9 +23,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // تواريخ المسابقة (العبقري إبراهيم زبط لك النهاية)
-        const startDate = new Date("2026-06-26T00:00:00+03:00").getTime();
-        const endDate = new Date("2026-07-26T23:00:00+03:00").getTime();
+        // إعدادات المسابقة (تأتي من قاعدة البيانات لتكون تحت تحكم الآدمن)
+        window.contestSettings = {
+            endDate: new Date("2026-07-26T23:00:00").getTime(),
+            isPaused: false
+        };
 
         function getLocalAndSecureDate() {
             const numTime = Date.now() + (3 * 60 * 60 * 1000); 
@@ -35,44 +37,55 @@
 
         window.addEventListener("DOMContentLoaded", () => {
             
-            function updateCountdown() {
-                const now = new Date().getTime();
-                const distance = startDate - now;
-                const endDistance = endDate - now;
-
-                if (distance > 0) {
-                    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                    
-                    document.getElementById("countdown-box").classList.remove("hidden");
-                    document.getElementById("timer").innerHTML = `${days} يوم و ${hours} ساعة و ${minutes} دقيقة و ${seconds} ثانية`;
-                    window.isContestStarted = false;
+            // مراقبة إعدادات المسابقة بشكل حي
+            onSnapshot(doc(db, "settings", "contest"), (docSnap) => {
+                if (docSnap.exists()) {
+                    window.contestSettings = docSnap.data();
                 } else {
-                    document.getElementById("countdown-box").classList.add("hidden");
-                    window.isContestStarted = true;
-                    
-                    if (endDistance > 0 && endDistance <= 24 * 60 * 60 * 1000) {
-                        const hours = Math.floor((endDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                        const minutes = Math.floor((endDistance % (1000 * 60 * 60)) / (1000 * 60));
-                        const seconds = Math.floor((endDistance % (1000 * 60)) / 1000);
-                        
-                        document.getElementById("end-countdown-box").classList.remove("hidden");
-                        document.getElementById("end-timer").innerHTML = `${hours} ساعة و ${minutes} دقيقة و ${seconds} ثانية`;
-                        window.isContestEnded = false;
-                    } else if (endDistance <= 0) {
-                        document.getElementById("end-countdown-box").classList.remove("hidden");
-                        document.getElementById("end-timer").innerHTML = "انتهت المسابقة! 🏁";
-                        window.isContestEnded = true;
-                    } else {
-                        document.getElementById("end-countdown-box").classList.add("hidden");
-                        window.isContestEnded = false;
-                    }
+                    // إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+                    setDoc(doc(db, "settings", "contest"), window.contestSettings);
+                }
+            });
+
+            function updateGlobalTimer() {
+                const now = new Date().getTime();
+                const endDistance = window.contestSettings.endDate - now;
+
+                const timerBox = document.getElementById("end-countdown-box");
+                const timerText = document.getElementById("end-timer");
+                const timerLabel = document.getElementById("end-timer-label");
+
+                if (window.contestSettings.isPaused) {
+                    timerBox.classList.remove("hidden");
+                    timerBox.classList.replace("bg-red-950/80", "bg-orange-950/80");
+                    timerBox.classList.replace("border-red-500/60", "border-orange-500/60");
+                    timerLabel.innerText = "⏸️ المسابقة متوقفة مؤقتاً";
+                    timerText.innerText = "بانتظار الإدارة...";
+                    window.isContestActive = false;
+                } else if (endDistance > 0 && endDistance <= 24 * 60 * 60 * 1000) {
+                    // أقل من 24 ساعة
+                    timerBox.classList.remove("hidden");
+                    timerBox.classList.replace("bg-orange-950/80", "bg-red-950/80");
+                    timerBox.classList.replace("border-orange-500/60", "border-red-500/60");
+                    timerLabel.innerText = "🚨 تنتهي المسابقة خلال";
+
+                    const hours = Math.floor((endDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((endDistance % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((endDistance % (1000 * 60)) / 1000);
+                    timerText.innerHTML = `${hours} ساعة و ${minutes} دقيقة و ${seconds} ثانية`;
+                    window.isContestActive = true;
+                } else if (endDistance <= 0) {
+                    timerBox.classList.remove("hidden");
+                    timerLabel.innerText = "🏁";
+                    timerText.innerHTML = "انتهت المسابقة!";
+                    window.isContestActive = false;
+                } else {
+                    // أكثر من 24 ساعة (إخفاء العداد)
+                    timerBox.classList.add("hidden");
+                    window.isContestActive = true;
                 }
             }
-            setInterval(updateCountdown, 1000);
-            updateCountdown();
+            setInterval(updateGlobalTimer, 1000);
 
             document.getElementById("dob").addEventListener("input", function(e) {
                 let val = e.target.value.replace(/\D/g, '');
@@ -114,7 +127,8 @@
                         gender: document.getElementById("reg-gender").value,
                         role: isAdmin ? "admin" : "student",
                         points: 0,
-                        status: "active"
+                        status: "active",
+                        deletionRequested: false
                     };
 
                     await setDoc(userRef, userData);
@@ -141,9 +155,6 @@
 
                     const user = userSnap.data();
                     if(user.status === "banned") return alert("تم استبعادك من المسابقة!");
-                    if(user.role === "student" && !window.isContestStarted) {
-                        return alert("لم تبدأ المسابقة بعد! يمكنك الدخول بدءاً من 26 حزيران.");
-                    }
 
                     window.currentUser = user;
                     if(user.role === "admin") {
@@ -157,7 +168,7 @@
             });
 
             document.getElementById("submit-prayers").addEventListener("click", async () => {
-                if(window.isContestEnded) return alert("المسابقة خلصت يا بطل! ما عاد يمديك تسجل صلوات.");
+                if(!window.isContestActive) return alert("عذراً، المسابقة متوقفة حالياً أو انتهت! لا يمكن تسجيل الصلوات الآن.");
                 
                 const prayers = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
                 const todayStr = getLocalAndSecureDate();
@@ -170,7 +181,6 @@
                     const val = checkedOpt ? parseInt(checkedOpt.value) : 0;
                     todayPoints += val;
                     
-                    // تم حل ثغرة البنات بذكاء خارق 😎
                     let textStatus = "لم يصلّ";
                     if(window.currentUser.gender === "أنثى") {
                         if(val === 2) textStatus = "صليت";
@@ -222,6 +232,38 @@
         window.showScreen = function(screenId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
             document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        // --- دوال الملف الشخصي والإعدادات ---
+        window.openProfileModal = function() {
+            document.getElementById("profile-modal").classList.remove("hidden");
+            document.getElementById("prof-name").innerText = `${window.currentUser.firstName} ${window.currentUser.lastName}`;
+            document.getElementById("prof-id").innerText = window.currentUser.identifier;
+            document.getElementById("btn-req-delete").classList.toggle("hidden", window.currentUser.role === 'admin');
+        }
+        
+        window.closeProfileModal = function() {
+            document.getElementById("profile-modal").classList.add("hidden");
+        }
+
+        window.changePassword = async function() {
+            const newPass = document.getElementById("new-password").value;
+            if(!newPass || newPass.length < 4) return alert("كلمة السر يجب أن تكون 4 رموز على الأقل");
+            try {
+                await updateDoc(doc(db, "users", window.currentUser.identifier), { password: newPass });
+                window.currentUser.password = newPass;
+                alert("تم تغيير كلمة السر بنجاح!");
+                document.getElementById("new-password").value = "";
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
+        window.requestAccountDeletion = async function() {
+            if(confirm("هل أنت متأكد أنك تريد إرسال طلب لحذف حسابك ومغادرة المسابقة؟ سيتم إرسال الطلب للإدارة.")) {
+                try {
+                    await updateDoc(doc(db, "users", window.currentUser.identifier), { deletionRequested: true });
+                    alert("تم إرسال طلب الحذف للإدارة بنجاح. يرجى انتظار الموافقة.");
+                } catch(e) { alert("خطأ: " + e.message); }
+            }
         }
 
         async function loadStudentDashboard() {
@@ -314,37 +356,129 @@
             } catch(e) { alert("خطأ: " + e.message); }
         }
 
+        // --- دوال الآدمن ولوحة الصدارة ---
         async function loadAdminDashboard() {
             showScreen("admin-screen");
+            
+            // تحديث واجهة تحكم المسابقة
+            const isoEnd = new Date(window.contestSettings.endDate).toISOString().slice(0,16);
+            document.getElementById("admin-end-date-input").value = isoEnd;
+            document.getElementById("btn-toggle-pause").innerText = window.contestSettings.isPaused ? "▶️ استئناف المسابقة" : "⏸️ إيقاف مؤقت للمسابقة";
+            document.getElementById("btn-toggle-pause").className = window.contestSettings.isPaused 
+                ? "px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded cursor-pointer" 
+                : "px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold rounded cursor-pointer";
+
             const listDiv = document.getElementById("students-list");
-            listDiv.innerHTML = "<tr><td colspan='4' class='text-center p-4 text-slate-400'>جاري تحميل الطلاب...</td></tr>";
+            const delReqDiv = document.getElementById("deletion-requests-list");
+            listDiv.innerHTML = "<tr><td colspan='5' class='text-center p-4 text-slate-400'>جاري تحميل المتصدرين...</td></tr>";
+            delReqDiv.innerHTML = "";
 
             try {
                 const querySnapshot = await getDocs(collection(db, "users"));
-                listDiv.innerHTML = "";
+                let students = [];
+                let deletionRequests = [];
 
                 querySnapshot.forEach((docSnap) => {
                     const student = docSnap.data();
                     if(student.role === "admin") return;
+                    students.push(student);
+                    if(student.deletionRequested) deletionRequests.push(student);
+                });
 
+                // ترتيب الطلاب لإنشاء "لوحة الصدارة"
+                students.sort((a, b) => b.points - a.points);
+
+                listDiv.innerHTML = "";
+                students.forEach((student, index) => {
+                    const rankMedal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index+1}`;
                     const tr = document.createElement("tr");
                     tr.className = "border-b border-slate-700 hover:bg-slate-700/40 cursor-pointer transition";
                     tr.innerHTML = `
+                        <td class="p-3 text-center font-bold text-slate-300">${rankMedal}</td>
                         <td class="p-3 font-semibold text-amber-400">${student.firstName} ${student.lastName}</td>
-                        <td class="p-3 text-center font-mono">${student.points}</td>
+                        <td class="p-3 text-center font-mono text-green-400 font-bold">${student.points}</td>
                         <td class="p-3 text-center">${student.gender}</td>
                         <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs font-bold ${student.status==='active'?'bg-green-500/20 text-green-400':'bg-red-500/20 text-red-400'}">${student.status==='active'?'نشط':'مستبعد'}</span></td>
                     `;
                     tr.addEventListener("click", () => showStudentDetails(student));
                     listDiv.appendChild(tr);
                 });
+
+                // عرض طلبات الحذف
+                if (deletionRequests.length > 0) {
+                    document.getElementById("deletion-requests-box").classList.remove("hidden");
+                    deletionRequests.forEach(req => {
+                        delReqDiv.innerHTML += `
+                            <div class="flex justify-between items-center bg-slate-900 p-3 rounded border border-red-500/30">
+                                <div>
+                                    <span class="text-amber-400 font-bold">${req.firstName} ${req.lastName}</span>
+                                    <span class="text-xs text-slate-400 block">${req.identifier}</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="approveDeletion('${req.identifier}')" class="bg-red-600 px-3 py-1 rounded text-xs text-white font-bold cursor-pointer">موافقة وحذف</button>
+                                    <button onclick="rejectDeletion('${req.identifier}')" class="bg-slate-600 px-3 py-1 rounded text-xs text-white font-bold cursor-pointer">رفض</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    document.getElementById("deletion-requests-box").classList.add("hidden");
+                }
+
             } catch(err) {
                 alert("خطأ في جلب البيانات: " + err.message);
             }
         }
 
+        window.updateContestEndDate = async function() {
+            const dateVal = document.getElementById("admin-end-date-input").value;
+            if(!dateVal) return;
+            const newTimestamp = new Date(dateVal).getTime();
+            try {
+                await updateDoc(doc(db, "settings", "contest"), { endDate: newTimestamp });
+                alert("تم تحديث وقت انتهاء المسابقة بنجاح!");
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
+        window.toggleContestPause = async function() {
+            try {
+                const newState = !window.contestSettings.isPaused;
+                await updateDoc(doc(db, "settings", "contest"), { isPaused: newState });
+                alert(newState ? "تم إيقاف المسابقة مؤقتاً!" : "تم استئناف المسابقة!");
+                loadAdminDashboard();
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
+        window.approveDeletion = async function(id) {
+            if(confirm("هل أنت متأكد من الموافقة وحذف الطالب نهائياً من النظام؟ لا يمكن التراجع!")) {
+                try {
+                    await deleteDoc(doc(db, "users", id));
+                    alert("تم حذف الحساب نهائياً.");
+                    loadAdminDashboard();
+                } catch(e) { alert("خطأ: " + e.message); }
+            }
+        }
+
+        window.rejectDeletion = async function(id) {
+            try {
+                await updateDoc(doc(db, "users", id), { deletionRequested: false });
+                alert("تم رفض طلب الحذف.");
+                loadAdminDashboard();
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
         window.closeAdminModal = function() {
             document.getElementById("admin-modal").classList.add("hidden");
+        }
+
+        // الفلتر الذكي الخاص بالبنات
+        function getSafePrayerText(gender, recordedText) {
+            if (!recordedText) return '-';
+            // إذا كانت أنثى ومكتوب بالمسجد أو 2، اقلبها "صليت" عشان نستر على الكود القديم 😂
+            if (gender === 'أنثى' && (recordedText.includes('المسجد') || recordedText === '2')) {
+                return 'صليت';
+            }
+            return recordedText;
         }
 
         async function showStudentDetails(student) {
@@ -358,7 +492,6 @@
             document.getElementById("det-gender").innerText = student.gender;
             document.getElementById("det-points").innerText = student.points;
 
-            // جلب السجل (صلوات + تعديلات الإدارة)
             const historyContainer = document.getElementById("admin-history-table");
             historyContainer.innerHTML = "<p class='text-xs text-slate-400 p-2'>جاري جلب السجل...</p>";
             try {
@@ -389,7 +522,14 @@
                             `;
                         } else {
                             const p = d.prayers || {};
-                            const pDetails = `ف:${p['الفجر']||'-'} | ظ:${p['الظهر']||'-'} | ع:${p['العصر']||'-'} | م:${p['المغرب']||'-'} | عشا:${p['العشاء']||'-'}`;
+                            // استخدام الفلتر الذكي لكل صلاة
+                            const f = getSafePrayerText(student.gender, p['الفجر']);
+                            const zh = getSafePrayerText(student.gender, p['الظهر']);
+                            const a = getSafePrayerText(student.gender, p['العصر']);
+                            const m = getSafePrayerText(student.gender, p['المغرب']);
+                            const isha = getSafePrayerText(student.gender, p['العشاء']);
+                            
+                            const pDetails = `ف:${f} | ظ:${zh} | ع:${a} | م:${m} | عشا:${isha}`;
                             tableHtml += `
                                 <tr class="border-b border-slate-900 hover:bg-slate-900/50">
                                     <td class="p-2 font-bold text-slate-300">${dayDoc.id}</td>
@@ -404,7 +544,6 @@
                 }
             } catch(e) { historyContainer.innerHTML = "<p class='text-xs text-red-400'>فشل الجلب</p>"; }
 
-            // جلب الإشعارات وردود الطالب عشان الآدمن يشوفها
             const notifContainer = document.getElementById("admin-notif-log");
             notifContainer.innerHTML = "<p class='text-xs text-slate-400'>جاري الجلب...</p>";
             try {
@@ -517,12 +656,8 @@
             </div>
             
             <div class="flex flex-col gap-2">
-                <div id="countdown-box" class="hidden bg-slate-950/80 px-6 py-3 rounded-2xl border-2 border-amber-500/60 shadow-lg animate-pulse">
-                    <span class="block text-amber-400 font-black text-xs uppercase tracking-wider mb-1">⏳ متبقي على انطلاق المسابقة</span> 
-                    <span id="timer" class="font-mono text-white text-base md:text-lg font-bold"></span>
-                </div>
                 <div id="end-countdown-box" class="hidden bg-red-950/80 px-6 py-3 rounded-2xl border-2 border-red-500/60 shadow-lg animate-pulse">
-                    <span class="block text-red-400 font-black text-xs uppercase tracking-wider mb-1">🚨 تنتهي المسابقة خلال</span> 
+                    <span id="end-timer-label" class="block text-red-400 font-black text-xs uppercase tracking-wider mb-1">🚨 تنتهي المسابقة خلال</span> 
                     <span id="end-timer" class="font-mono text-white text-base md:text-lg font-bold"></span>
                 </div>
             </div>
@@ -561,7 +696,7 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm mb-1 text-slate-300">البريد أو رقم الهاتف (للدخول به)</label>
+                    <label class="block text-sm mb-1 text-slate-300">البريد أو رقم الهاتف</label>
                     <input type="text" id="reg-id" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -576,7 +711,7 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-sm mb-1 text-slate-300">تاريخ الميلاد (أرقام)</label>
+                        <label class="block text-sm mb-1 text-slate-300">تاريخ الميلاد</label>
                         <input type="text" id="dob" placeholder="22082013" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
                     </div>
                     <div>
@@ -620,22 +755,46 @@
             <p class="text-sm text-center mb-4 bg-amber-500/10 text-amber-400 p-2 rounded border border-amber-500/20">اختر صلواتك التي أديتها اليوم لتحديث نقاطك:</p>
             <div id="prayers-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
             
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
                 <button id="submit-prayers" class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-lg transition text-center shadow-md cursor-pointer">حفظ صلوات اليوم ✅</button>
+                <button onclick="openProfileModal()" class="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold cursor-pointer">الملف الشخصي</button>
                 <button onclick="logout()" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold cursor-pointer">خروج</button>
             </div>
         </section>
 
         <section id="admin-screen" class="screen hidden space-y-6">
             <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-xl font-black text-amber-400">لوحة تحكم إدارة مركز الأيوبية 👑</h2>
-                    <button onclick="logout()" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg cursor-pointer">تسجيل خروج</button>
+                <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+                    <h2 class="text-xl font-black text-amber-400">لوحة تحكم الإدارة 👑</h2>
+                    <div class="flex gap-2">
+                        <button onclick="openProfileModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-sm font-bold text-white rounded-lg cursor-pointer">ملفي الشخصي</button>
+                        <button onclick="logout()" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg cursor-pointer">تسجيل خروج</button>
+                    </div>
                 </div>
+
+                <!-- تحكم المسابقة -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-600 mb-6 flex flex-wrap gap-4 items-end">
+                    <div>
+                        <label class="block text-sm text-slate-300 mb-1 font-bold">تاريخ وساعة انتهاء المسابقة:</label>
+                        <input type="datetime-local" id="admin-end-date-input" class="p-2 rounded bg-slate-800 border border-slate-600 text-white text-sm w-56">
+                    </div>
+                    <button onclick="updateContestEndDate()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded cursor-pointer">حفظ الوقت</button>
+                    <button id="btn-toggle-pause" onclick="toggleContestPause()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded cursor-pointer">⏸️ إيقاف مؤقت</button>
+                </div>
+
+                <!-- طلبات الحذف -->
+                <div id="deletion-requests-box" class="hidden bg-red-950/30 p-4 rounded-xl border border-red-500/50 mb-6">
+                    <h3 class="font-bold text-red-400 mb-2">⚠️ طلبات حذف الحساب المعلقة</h3>
+                    <div id="deletion-requests-list" class="space-y-2 max-h-40 overflow-y-auto"></div>
+                </div>
+
+                <!-- لوحة الصدارة -->
+                <h3 class="font-bold text-amber-400 mb-2">🏆 لوحة الصدارة (الطلاب بترتيب النقاط)</h3>
                 <div class="overflow-x-auto">
                     <table class="w-full text-right border-collapse">
                         <thead>
                             <tr class="border-b border-slate-600 bg-slate-900 text-slate-300 text-sm">
+                                <th class="p-3 text-center">المركز</th>
                                 <th class="p-3">اسم الطالب</th>
                                 <th class="p-3 text-center">النقاط</th>
                                 <th class="p-3 text-center">الجنس</th>
@@ -648,14 +807,34 @@
             </div>
         </section>
 
-        <!-- نافذة الآدمن المنبثقة (Modal) اللي تطلع فوق كل شيء -->
+        <!-- نافذة الملف الشخصي (الطالب/الآدمن) -->
+        <div id="profile-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+            <div class="bg-slate-800 p-6 rounded-2xl border border-blue-500 shadow-2xl w-full max-w-sm relative">
+                <button onclick="closeProfileModal()" class="absolute top-4 left-4 text-slate-400 hover:text-red-500 text-3xl font-bold cursor-pointer">&times;</button>
+                <h3 class="text-xl font-bold text-blue-400 border-b border-slate-700 pb-2 mb-4">الملف الشخصي 👤</h3>
+                
+                <div class="mb-4 text-sm">
+                    <p class="text-slate-400">الاسم: <span id="prof-name" class="text-white font-bold"></span></p>
+                    <p class="text-slate-400">المعرف: <span id="prof-id" class="text-white font-mono"></span></p>
+                </div>
+
+                <div class="bg-slate-900 p-3 rounded-lg mb-4">
+                    <label class="block text-sm text-slate-300 mb-1">تغيير كلمة السر:</label>
+                    <input type="password" id="new-password" placeholder="كلمة السر الجديدة..." class="w-full p-2 mb-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
+                    <button onclick="changePassword()" class="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded text-sm cursor-pointer">حفظ كلمة السر</button>
+                </div>
+
+                <button id="btn-req-delete" onclick="requestAccountDeletion()" class="w-full py-2 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-500/50 font-bold rounded text-sm transition cursor-pointer">🗑️ طلب حذف حسابي نهائياً</button>
+            </div>
+        </div>
+
+        <!-- نافذة الآدمن المنبثقة (تفاصيل الطالب) -->
         <div id="admin-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
             <div class="bg-slate-800 p-6 rounded-2xl border-2 border-amber-500 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
                 <button onclick="closeAdminModal()" class="absolute top-4 left-4 text-slate-400 hover:text-red-500 text-3xl font-bold cursor-pointer">&times;</button>
                 
                 <h3 class="text-xl font-bold text-amber-400 border-b border-slate-700 pb-2 mb-4">ملف الطالب</h3>
                 
-                <!-- التفاصيل الأساسية -->
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-slate-900 p-4 rounded-xl mb-4">
                     <p><span class="text-slate-400 block">الاسم:</span> <strong id="det-name" class="text-white text-base"></strong></p>
                     <p><span class="text-slate-400 block">المعرّف:</span> <strong id="det-id" class="text-slate-200 font-mono"></strong></p>
@@ -665,61 +844,8 @@
                     <p><span class="text-slate-400 block">النقاط الحالية:</span> <strong id="det-points" class="text-green-400 font-mono text-lg"></strong></p>
                 </div>
 
-                <!-- إضافة / خصم النقاط -->
                 <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-4">
                     <h4 class="font-bold text-amber-400 mb-2">⚖️ تعديل النقاط (ينحفظ بالسجل)</h4>
                     <div class="flex flex-wrap gap-2 items-center">
                         <input type="number" id="adj-pts-val" placeholder="رقم (مثال: 50 أو -20)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm w-40">
-                        <input type="text" id="adj-note" placeholder="ملاحظة (اختياري)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm flex-1">
-                        <label class="text-sm flex items-center gap-1 cursor-pointer"><input type="checkbox" id="adj-show-admin" checked> إظهار اسمي للآدمنز</label>
-                        <button onclick="submitAdminAdjustment()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded cursor-pointer">نفذ التعديل</button>
-                    </div>
-                </div>
-
-                <!-- إرسال إشعار / جائزة -->
-                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-4">
-                    <h4 class="font-bold text-amber-400 mb-2">🎁 إرسال إشعار أو جائزة</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
-                        <select id="notif-type-select" class="p-2 rounded bg-slate-800 border border-slate-600 text-white text-sm">
-                            <option value="رسالة">رسالة إدارية</option>
-                            <option value="جائزة">تبليغ بجائزة</option>
-                        </select>
-                        <input type="text" id="notif-title" placeholder="عنوان الإشعار (مثال: مبروك الفوز!)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
-                    </div>
-                    <textarea id="notif-body" placeholder="محتوى الإشعار أو تفاصيل الجائزة..." class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm mb-2" rows="2"></textarea>
-                    
-                    <div id="prize-fields" class="hidden mb-2">
-                        <input type="text" id="notif-time" placeholder="وقت التسليم (مثال: غداً بعد العصر)" class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
-                    </div>
-                    
-                    <div class="flex justify-between items-center">
-                        <label class="text-sm text-slate-300 flex items-center gap-1 cursor-pointer">
-                            <input type="checkbox" id="notif-req-reply"> أطلب من الطالب الرد (مثال: يرسل رقمه)
-                        </label>
-                        <button onclick="sendAdminNotification()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded cursor-pointer">إرسال الإشعار</button>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- سجل الصلوات والتعديلات -->
-                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
-                        <h4 class="text-sm font-bold text-amber-400 mb-1">📋 سجل الطالب (صلوات وتعديلات):</h4>
-                        <div id="admin-history-table" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
-                    </div>
-                    
-                    <!-- سجل ردود الطالب -->
-                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
-                        <h4 class="text-sm font-bold text-amber-400 mb-1">💬 ردود الطالب على الإشعارات:</h4>
-                        <div id="admin-notif-log" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
-                    </div>
-                </div>
-
-                <div class="mt-4 pt-4 border-t border-slate-700 text-left">
-                    <button onclick="kickStudent()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg cursor-pointer">طرد واستبعاد الطالب 🛑</button>
-                </div>
-            </div>
-        </div>
-
-    </main>
-</body>
-</html>
+                        <input type="text" id="adj-note" placeholder="ملاحظة (اختياري)" class="p-2 rounded bg-slate-800 text-white border border-sla
