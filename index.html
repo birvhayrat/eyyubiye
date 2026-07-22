@@ -848,4 +848,53 @@
                     <h4 class="font-bold text-amber-400 mb-2">⚖️ تعديل النقاط (ينحفظ بالسجل)</h4>
                     <div class="flex flex-wrap gap-2 items-center">
                         <input type="number" id="adj-pts-val" placeholder="رقم (مثال: 50 أو -20)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm w-40">
-                        <input type="text" id="adj-note" placeholder="ملاحظة (اختياري)" class="p-2 rounded bg-slate-800 text-white border border-sla
+                        <input type="text" id="adj-note" placeholder="ملاحظة (اختياري)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm flex-1">
+                        <label class="text-sm flex items-center gap-1 cursor-pointer"><input type="checkbox" id="adj-show-admin" checked> إظهار اسمي للآدمنز</label>
+                        <button onclick="submitAdminAdjustment()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded cursor-pointer">نفذ التعديل</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-4">
+                    <h4 class="font-bold text-amber-400 mb-2">🎁 إرسال إشعار أو جائزة</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                        <select id="notif-type-select" class="p-2 rounded bg-slate-800 border border-slate-600 text-white text-sm">
+                            <option value="رسالة">رسالة إدارية</option>
+                            <option value="جائزة">تبليغ بجائزة</option>
+                        </select>
+                        <input type="text" id="notif-title" placeholder="عنوان الإشعار (مثال: مبروك الفوز!)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
+                    </div>
+                    <textarea id="notif-body" placeholder="محتوى الإشعار أو تفاصيل الجائزة..." class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm mb-2" rows="2"></textarea>
+                    
+                    <div id="prize-fields" class="hidden mb-2">
+                        <input type="text" id="notif-time" placeholder="وقت التسليم (مثال: غداً بعد العصر)" class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
+                    </div>
+                    
+                    <div class="flex justify-between items-center">
+                        <label class="text-sm text-slate-300 flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="notif-req-reply"> أطلب من الطالب الرد
+                        </label>
+                        <button onclick="sendAdminNotification()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded cursor-pointer">إرسال الإشعار</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <h4 class="text-sm font-bold text-amber-400 mb-1">📋 سجل الطالب (صلوات وتعديلات):</h4>
+                        <div id="admin-history-table" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
+                    </div>
+                    
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <h4 class="text-sm font-bold text-amber-400 mb-1">💬 ردود الطالب على الإشعارات:</h4>
+                        <div id="admin-notif-log" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-slate-700 text-left">
+                    <button onclick="kickStudent()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg cursor-pointer">طرد واستبعاد الطالب 🛑</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</body>
+</html>
