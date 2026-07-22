@@ -10,7 +10,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
         import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
-        // إعدادات فايربيس الخاصة بمشروعك
         const firebaseConfig = {
           apiKey: "AIzaSyDkk2uq_eZ62ZZZU5KqWiYBWdOOO22EPXo",
           authDomain: "pray-for-allah.firebaseapp.com",
@@ -24,22 +23,22 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // تواريخ المسابقة (2026)
+        // تواريخ المسابقة (العبقري إبراهيم زبط لك النهاية)
         const startDate = new Date("2026-06-26T00:00:00+03:00").getTime();
+        const endDate = new Date("2026-07-26T23:00:00+03:00").getTime();
 
-        // دالة مخصصة لجلب التاريخ الحالي بصيغة YYYY-MM-DD ثابتة بناءً على توقيتنا المحلي UTC+3 لمنع تلاعب جهاز الطالب
         function getLocalAndSecureDate() {
-            const numTime = Date.now() + (3 * 60 * 60 * 1000); // إضافة 3 ساعات لتثبيت التوقيت المحلي
+            const numTime = Date.now() + (3 * 60 * 60 * 1000); 
             const localIso = new Date(numTime).toISOString(); 
             return localIso.split('T')[0]; 
         }
 
         window.addEventListener("DOMContentLoaded", () => {
             
-            // العداد التنازلي للوقت
             function updateCountdown() {
                 const now = new Date().getTime();
                 const distance = startDate - now;
+                const endDistance = endDate - now;
 
                 if (distance > 0) {
                     const days = Math.floor(distance / (1000 * 60 * 60 * 24));
@@ -53,12 +52,28 @@
                 } else {
                     document.getElementById("countdown-box").classList.add("hidden");
                     window.isContestStarted = true;
+                    
+                    if (endDistance > 0 && endDistance <= 24 * 60 * 60 * 1000) {
+                        const hours = Math.floor((endDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const minutes = Math.floor((endDistance % (1000 * 60 * 60)) / (1000 * 60));
+                        const seconds = Math.floor((endDistance % (1000 * 60)) / 1000);
+                        
+                        document.getElementById("end-countdown-box").classList.remove("hidden");
+                        document.getElementById("end-timer").innerHTML = `${hours} ساعة و ${minutes} دقيقة و ${seconds} ثانية`;
+                        window.isContestEnded = false;
+                    } else if (endDistance <= 0) {
+                        document.getElementById("end-countdown-box").classList.remove("hidden");
+                        document.getElementById("end-timer").innerHTML = "انتهت المسابقة! 🏁";
+                        window.isContestEnded = true;
+                    } else {
+                        document.getElementById("end-countdown-box").classList.add("hidden");
+                        window.isContestEnded = false;
+                    }
                 }
             }
             setInterval(updateCountdown, 1000);
             updateCountdown();
 
-            // تنسيق تلقائي لتاريخ الميلاد
             document.getElementById("dob").addEventListener("input", function(e) {
                 let val = e.target.value.replace(/\D/g, '');
                 if (val.length > 8) val = val.substring(0,8);
@@ -70,12 +85,10 @@
                 e.target.value = val;
             });
 
-            // إظهار وإخفاء حقل كود الآدمن
             document.getElementById("reg-admin").addEventListener("change", function(e) {
                 document.getElementById("admin-code-box").classList.toggle("hidden", !e.target.checked);
             });
 
-            // إنشاء الحساب
             document.getElementById("register-form").addEventListener("submit", async (e) => {
                 e.preventDefault();
                 const identifier = document.getElementById("reg-id").value.trim();
@@ -113,7 +126,6 @@
                 }
             });
 
-            // تسجيل الدخول
             document.getElementById("login-form").addEventListener("submit", async (e) => {
                 e.preventDefault();
                 const id = document.getElementById("login-id").value.trim();
@@ -144,8 +156,9 @@
                 }
             });
 
-            // حفظ صلوات اليوم للطالب بنظام التحديث اليومي الفولاذي
             document.getElementById("submit-prayers").addEventListener("click", async () => {
+                if(window.isContestEnded) return alert("المسابقة خلصت يا بطل! ما عاد يمديك تسجل صلوات.");
+                
                 const prayers = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
                 const todayStr = getLocalAndSecureDate();
                 
@@ -157,25 +170,32 @@
                     const val = checkedOpt ? parseInt(checkedOpt.value) : 0;
                     todayPoints += val;
                     
+                    // تم حل ثغرة البنات بذكاء خارق 😎
                     let textStatus = "لم يصلّ";
-                    if(val === 1) textStatus = "في البيت";
-                    if(val === 2) textStatus = "في المسجد";
+                    if(window.currentUser.gender === "أنثى") {
+                        if(val === 2) textStatus = "صليت";
+                    } else {
+                        if(val === 1) textStatus = "في البيت";
+                        if(val === 2) textStatus = "في المسجد";
+                    }
                     prayersRecord[prayer] = textStatus;
                 });
 
                 try {
-                    // مسار حفظ سجل اليوم المنفصل للطالب لحساب مصدر النقاط ومنع التكرار عشوائياً
                     const dayHistoryRef = doc(db, "users", window.currentUser.identifier, "history", todayStr);
                     const daySnap = await getDoc(dayHistoryRef);
                     
                     let pointsDifference = todayPoints;
                     if(daySnap.exists()) {
-                        // ثغرة الحفظ المتكرر: إذا عدل نفس اليوم نحسب الفرق فقط
-                        const oldPoints = daySnap.data().pointsCalculated || 0;
-                        pointsDifference = todayPoints - oldPoints;
+                        const oldData = daySnap.data();
+                        if(oldData.type !== "تعديل إداري") {
+                            const oldPoints = oldData.pointsCalculated || 0;
+                            pointsDifference = todayPoints - oldPoints;
+                        }
                     }
 
                     await setDoc(dayHistoryRef, {
+                        type: "صلوات",
                         prayers: prayersRecord,
                         pointsCalculated: todayPoints,
                         date: todayStr
@@ -187,10 +207,15 @@
 
                     window.currentUser.points = newTotalPoints;
                     document.getElementById("student-points").innerText = newTotalPoints;
-                    alert(`تم حفظ صلواتك لتاريخ اليوم (${todayStr}) بنجاح! كسبت ${todayPoints} نقاط.`);
+                    alert(`تم حفظ صلواتك لتاريخ اليوم (${todayStr}) بنجاح!`);
                 } catch(err) {
                     alert("حدث خطأ أثناء الحفظ: " + err.message);
                 }
+            });
+            
+            document.getElementById("notif-type-select").addEventListener("change", function(e) {
+                const isPrize = e.target.value === "جائزة";
+                document.getElementById("prize-fields").classList.toggle("hidden", !isPrize);
             });
         });
 
@@ -208,13 +233,14 @@
             prayersDiv.innerHTML = "";
             const prayers = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
 
-            // محاولة جلب خيارات اليوم الحالية لكي تظهر له إن كان قد سجلها سابقاً اليوم
             const todayStr = getLocalAndSecureDate();
             const dayHistoryRef = doc(db, "users", window.currentUser.identifier, "history", todayStr);
             let existingPrayers = {};
             try {
                 const daySnap = await getDoc(dayHistoryRef);
-                if(daySnap.exists()) existingPrayers = daySnap.data().prayers || {};
+                if(daySnap.exists() && daySnap.data().type !== "تعديل إداري") {
+                    existingPrayers = daySnap.data().prayers || {};
+                }
             } catch(e){}
 
             prayers.forEach(prayer => {
@@ -230,7 +256,7 @@
                 } else {
                     optionsHtml = `
                         <label class="block p-1 bg-slate-900/40 rounded mt-1 cursor-pointer"><input type="radio" name="${prayer}" value="0" ${currentStatus==='لم يصلّ'?'checked':''} class="ml-1"> لم أصلِّ (0)</label>
-                        <label class="block p-1 bg-slate-900/40 rounded mt-1 cursor-pointer"><input type="radio" name="${prayer}" value="2" ${currentStatus==='في المسجد'||currentStatus==='صليت'?'checked':''} class="ml-1"> صليت (2)</label>
+                        <label class="block p-1 bg-slate-900/40 rounded mt-1 cursor-pointer"><input type="radio" name="${prayer}" value="2" ${currentStatus==='صليت'?'checked':''} class="ml-1"> صليت (2)</label>
                     `;
                 }
 
@@ -241,6 +267,51 @@
                     </div>
                 `;
             });
+
+            loadStudentNotifications();
+        }
+
+        async function loadStudentNotifications() {
+            const container = document.getElementById("student-notifications-list");
+            container.innerHTML = "<p class='text-xs text-slate-400'>جاري التحميل...</p>";
+            try {
+                const notifSnap = await getDocs(collection(db, "users", window.currentUser.identifier, "notifications"));
+                if(notifSnap.empty) {
+                    container.innerHTML = "<p class='text-sm text-slate-400'>لا توجد إشعارات جديدة.</p>";
+                    return;
+                }
+                let html = "";
+                notifSnap.forEach(docSnap => {
+                    const n = docSnap.data();
+                    html += `
+                        <div class="bg-slate-700 p-3 rounded-lg border-r-4 ${n.type==='جائزة'?'border-amber-400':'border-blue-400'} mb-3">
+                            <h4 class="font-bold ${n.type==='جائزة'?'text-amber-400':'text-blue-400'}">${n.title}</h4>
+                            <p class="text-sm text-white mt-1">${n.body}</p>
+                            ${n.prizeTime ? `<p class="text-xs text-green-300 mt-1">⏰ وقت التسليم: ${n.prizeTime}</p>` : ''}
+                            ${(n.requestReply && !n.reply) ? `
+                                <div class="mt-2 flex gap-2">
+                                    <input type="text" id="reply-${docSnap.id}" class="flex-1 p-1.5 rounded bg-slate-900 border border-slate-600 text-white text-sm" placeholder="اكتب المطلوب هنا...">
+                                    <button onclick="submitReply('${docSnap.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-bold cursor-pointer">إرسال</button>
+                                </div>
+                            ` : ''}
+                            ${n.reply ? `<p class="text-xs text-slate-300 bg-slate-900 p-1.5 rounded mt-2">✅ رددت: ${n.reply}</p>` : ''}
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch(e) {
+                container.innerHTML = "<p class='text-xs text-red-400'>فشل تحميل الإشعارات.</p>";
+            }
+        }
+
+        window.submitReply = async function(notifId) {
+            const text = document.getElementById(`reply-${notifId}`).value.trim();
+            if(!text) return alert("اكتب الرد أولاً!");
+            try {
+                await updateDoc(doc(db, "users", window.currentUser.identifier, "notifications", notifId), { reply: text });
+                alert("تم إرسال الرد للإدارة بنجاح!");
+                loadStudentNotifications();
+            } catch(e) { alert("خطأ: " + e.message); }
         }
 
         async function loadAdminDashboard() {
@@ -272,8 +343,14 @@
             }
         }
 
+        window.closeAdminModal = function() {
+            document.getElementById("admin-modal").classList.add("hidden");
+        }
+
         async function showStudentDetails(student) {
-            document.getElementById("detail-box").classList.remove("hidden");
+            window.currentViewedStudent = student;
+            document.getElementById("admin-modal").classList.remove("hidden");
+            
             document.getElementById("det-name").innerText = `${student.firstName} ${student.lastName}`;
             document.getElementById("det-id").innerText = student.identifier;
             document.getElementById("det-pass").innerText = student.password;
@@ -281,76 +358,135 @@
             document.getElementById("det-gender").innerText = student.gender;
             document.getElementById("det-points").innerText = student.points;
 
-            // جلب جدول مصدر نقاط صلوات الطالب اليومية فورا وعرضها للآدمن بالأسفل
+            // جلب السجل (صلوات + تعديلات الإدارة)
             const historyContainer = document.getElementById("admin-history-table");
-            historyContainer.innerHTML = "<p class='text-xs text-slate-400 p-2'>جاري جلب سجل الصلوات التفصيلي لهذا الطالب...</p>";
-            
+            historyContainer.innerHTML = "<p class='text-xs text-slate-400 p-2'>جاري جلب السجل...</p>";
             try {
                 const historySnap = await getDocs(collection(db, "users", student.identifier, "history"));
                 if(historySnap.empty) {
-                    historyContainer.innerHTML = "<p class='text-xs text-orange-400 p-2'>هذا الطالب لم يسجل أي صلوات بعد.</p>";
+                    historyContainer.innerHTML = "<p class='text-xs text-orange-400 p-2'>لا يوجد سجل بعد.</p>";
                 } else {
                     let tableHtml = `
-                        <table class="w-full text-center text-xs border-collapse mt-2 bg-slate-950 rounded-lg overflow-hidden">
+                        <table class="w-full text-center text-xs border-collapse bg-slate-950 rounded-lg overflow-hidden">
                             <thead>
                                 <tr class="bg-slate-900 text-amber-400 border-b border-slate-800">
                                     <th class="p-2">التاريخ</th>
-                                    <th class="p-2">الفجر</th>
-                                    <th class="p-2">الظهر</th>
-                                    <th class="p-2">العصر</th>
-                                    <th class="p-2">المغرب</th>
-                                    <th class="p-2">العشاء</th>
+                                    <th class="p-2">التفاصيل</th>
                                     <th class="p-2">النقاط</th>
                                 </tr>
                             </thead>
                             <tbody>
                     `;
                     historySnap.forEach(dayDoc => {
-                        const dayData = dayDoc.data();
-                        const p = dayData.prayers || {};
-                        tableHtml += `
-                            <tr class="border-b border-slate-900 hover:bg-slate-900/50">
-                                <td class="p-2 font-bold text-slate-300">${dayDoc.id}</td>
-                                <td class="p-2">${p["الفجر"] || "-"}</td>
-                                <td class="p-2">${p["الظهر"] || "-"}</td>
-                                <td class="p-2">${p["العصر"] || "-"}</td>
-                                <td class="p-2">${p["المغرب"] || "-"}</td>
-                                <td class="p-2">${p["العشاء"] || "-"}</td>
-                                <td class="p-2 font-bold text-green-400">+${dayData.pointsCalculated}</td>
-                            </tr>
-                        `;
+                        const d = dayDoc.data();
+                        if(d.type === "تعديل إداري") {
+                            tableHtml += `
+                                <tr class="border-b border-slate-900 bg-purple-900/20">
+                                    <td class="p-2 font-bold text-slate-300">${d.date}</td>
+                                    <td class="p-2 text-purple-300">تعديل يدوي (بواسطة: ${d.adminName}) - ${d.note || ''}</td>
+                                    <td class="p-2 font-bold ${d.pointsCalculated >= 0 ? 'text-green-400' : 'text-red-400'}">${d.pointsCalculated >= 0 ? '+'+d.pointsCalculated : d.pointsCalculated}</td>
+                                </tr>
+                            `;
+                        } else {
+                            const p = d.prayers || {};
+                            const pDetails = `ف:${p['الفجر']||'-'} | ظ:${p['الظهر']||'-'} | ع:${p['العصر']||'-'} | م:${p['المغرب']||'-'} | عشا:${p['العشاء']||'-'}`;
+                            tableHtml += `
+                                <tr class="border-b border-slate-900 hover:bg-slate-900/50">
+                                    <td class="p-2 font-bold text-slate-300">${dayDoc.id}</td>
+                                    <td class="p-2 text-slate-400">${pDetails}</td>
+                                    <td class="p-2 font-bold text-green-400">+${d.pointsCalculated}</td>
+                                </tr>
+                            `;
+                        }
                     });
                     tableHtml += "</tbody></table>";
                     historyContainer.innerHTML = tableHtml;
                 }
-            } catch(e) {
-                historyContainer.innerHTML = "<p class='text-xs text-red-400 p-2'>فشل جلب جدول المصادر</p>";
+            } catch(e) { historyContainer.innerHTML = "<p class='text-xs text-red-400'>فشل الجلب</p>"; }
+
+            // جلب الإشعارات وردود الطالب عشان الآدمن يشوفها
+            const notifContainer = document.getElementById("admin-notif-log");
+            notifContainer.innerHTML = "<p class='text-xs text-slate-400'>جاري الجلب...</p>";
+            try {
+                const notifSnap = await getDocs(collection(db, "users", student.identifier, "notifications"));
+                if(notifSnap.empty) {
+                    notifContainer.innerHTML = "<p class='text-xs text-slate-500'>لا توجد إشعارات سابقة.</p>";
+                } else {
+                    let html = "";
+                    notifSnap.forEach(docSnap => {
+                        const n = docSnap.data();
+                        html += `
+                            <div class="mb-2 p-2 bg-slate-900 rounded border border-slate-700 text-sm">
+                                <p><strong class="text-amber-400">${n.title}</strong> (${n.type})</p>
+                                <p class="text-slate-300 text-xs mt-1">الرد: ${n.reply ? `<span class="text-green-400 font-bold">${n.reply}</span>` : '<span class="text-slate-500">لم يرد بعد أو غير مطلوب</span>'}</p>
+                            </div>
+                        `;
+                    });
+                    notifContainer.innerHTML = html;
+                }
+            } catch(e) {}
+        }
+
+        window.submitAdminAdjustment = async function() {
+            const pts = parseInt(document.getElementById("adj-pts-val").value);
+            if(isNaN(pts)) return alert("أدخل رقم صحيح للنقاط!");
+            
+            const showToAdmin = document.getElementById("adj-show-admin").checked;
+            const myName = `${window.currentUser.firstName} ${window.currentUser.lastName}`;
+            const loggedAdminName = showToAdmin ? myName : "آدمن مجهول";
+
+            try {
+                const adjRef = doc(db, "users", window.currentViewedStudent.identifier, "history", "adj_" + Date.now());
+                await setDoc(adjRef, {
+                    type: "تعديل إداري",
+                    pointsCalculated: pts,
+                    date: getLocalAndSecureDate(),
+                    adminName: loggedAdminName,
+                    note: document.getElementById("adj-note").value
+                });
+
+                const newPts = Math.max(0, window.currentViewedStudent.points + pts);
+                await updateDoc(doc(db, "users", window.currentViewedStudent.identifier), { points: newPts });
+                
+                window.currentViewedStudent.points = newPts;
+                alert("تم تعديل النقاط وحفظها بالسجل بنجاح!");
+                document.getElementById("adj-pts-val").value = "";
+                showStudentDetails(window.currentViewedStudent);
+                loadAdminDashboard();
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
+        window.sendAdminNotification = async function() {
+            const type = document.getElementById("notif-type-select").value;
+            const title = document.getElementById("notif-title").value;
+            const body = document.getElementById("notif-body").value;
+            const reqReply = document.getElementById("notif-req-reply").checked;
+            const prizeTime = document.getElementById("notif-time").value;
+
+            try {
+                const notifRef = doc(collection(db, "users", window.currentViewedStudent.identifier, "notifications"));
+                await setDoc(notifRef, {
+                    type: type,
+                    title: title,
+                    body: body,
+                    requestReply: reqReply,
+                    prizeTime: type === "جائزة" ? prizeTime : null,
+                    reply: null,
+                    date: getLocalAndSecureDate(),
+                    timestamp: Date.now()
+                });
+                alert("تم إرسال الإشعار للطالب بنجاح!");
+                showStudentDetails(window.currentViewedStudent);
+            } catch(e) { alert("خطأ: " + e.message); }
+        }
+
+        window.kickStudent = async function() {
+            if(confirm(`هل أنت متأكد من طرد واستبعاد الطالب ${window.currentViewedStudent.firstName}؟`)) {
+                await updateDoc(doc(db, "users", window.currentViewedStudent.identifier), { status: "banned" });
+                alert("تم استبعاد الطالب بنجاح!");
+                closeAdminModal();
+                loadAdminDashboard();
             }
-
-            document.getElementById("btn-add-pts").onclick = async () => {
-                let pts = parseInt(prompt("أدخل عدد النقاط لإضافتها:"));
-                if(!isNaN(pts)) {
-                    await updateDoc(doc(db, "users", student.identifier), { points: student.points + pts });
-                    student.points += pts; showStudentDetails(student); loadAdminDashboard();
-                }
-            };
-
-            document.getElementById("btn-sub-pts").onclick = async () => {
-                let pts = parseInt(prompt("أدخل عدد النقاط لخصمها:"));
-                if(!isNaN(pts)) {
-                    await updateDoc(doc(db, "users", student.identifier), { points: Math.max(0, student.points - pts) });
-                    student.points = Math.max(0, student.points - pts); showStudentDetails(student); loadAdminDashboard();
-                }
-            };
-
-            document.getElementById("btn-kick").onclick = async () => {
-                if(confirm(`هل أنت متأكد من طرد واستبعاد الطالب ${student.firstName}؟`)) {
-                    await updateDoc(doc(db, "users", student.identifier), { status: "banned" });
-                    alert("تم استبعاد الطالب بنجاح!");
-                    document.getElementById("detail-box").classList.add("hidden");
-                    loadAdminDashboard();
-                }
-            };
         }
 
         window.logout = function() {
@@ -380,14 +516,20 @@
                 </div>
             </div>
             
-            <div id="countdown-box" class="hidden bg-slate-950/80 px-6 py-3 rounded-2xl border-2 border-amber-500/60 shadow-lg animate-pulse">
-                <span class="block text-amber-400 font-black text-xs uppercase tracking-wider mb-1">⏳ متبقي على انطلاق المسابقة</span> 
-                <span id="timer" class="font-mono text-white text-base md:text-lg font-bold"></span>
+            <div class="flex flex-col gap-2">
+                <div id="countdown-box" class="hidden bg-slate-950/80 px-6 py-3 rounded-2xl border-2 border-amber-500/60 shadow-lg animate-pulse">
+                    <span class="block text-amber-400 font-black text-xs uppercase tracking-wider mb-1">⏳ متبقي على انطلاق المسابقة</span> 
+                    <span id="timer" class="font-mono text-white text-base md:text-lg font-bold"></span>
+                </div>
+                <div id="end-countdown-box" class="hidden bg-red-950/80 px-6 py-3 rounded-2xl border-2 border-red-500/60 shadow-lg animate-pulse">
+                    <span class="block text-red-400 font-black text-xs uppercase tracking-wider mb-1">🚨 تنتهي المسابقة خلال</span> 
+                    <span id="end-timer" class="font-mono text-white text-base md:text-lg font-bold"></span>
+                </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto p-4 mt-6">
+    <main class="max-w-4xl mx-auto p-4 mt-6 relative">
 
         <section id="login-screen" class="screen bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-md mx-auto">
             <h2 class="text-xl font-bold text-center text-amber-400 mb-6">تسجيل الدخول للمسابقة</h2>
@@ -402,7 +544,7 @@
                 </div>
                 <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 font-bold rounded-lg text-slate-900 transition shadow-lg cursor-pointer">دخول</button>
             </form>
-            <p class="text-center text-sm text-slate-400 mt-4">ليس لديك حساب？ <button onclick="showScreen('register-screen')" class="text-amber-400 underline font-bold cursor-pointer">إنشاء حساب جديد</button></p>
+            <p class="text-center text-sm text-slate-400 mt-4">ليس لديك حساب؟ <button onclick="showScreen('register-screen')" class="text-amber-400 underline font-bold cursor-pointer">إنشاء حساب جديد</button></p>
         </section>
 
         <section id="register-screen" class="screen hidden bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-md mx-auto">
@@ -434,7 +576,7 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-sm mb-1 text-slate-300">تاريخ الميلاد (أرقام فقط)</label>
+                        <label class="block text-sm mb-1 text-slate-300">تاريخ الميلاد (أرقام)</label>
                         <input type="text" id="dob" placeholder="22082013" required class="w-full p-2 rounded-lg bg-slate-900 border border-slate-600 text-white">
                     </div>
                     <div>
@@ -447,10 +589,10 @@
                 </div>
                 <div class="flex items-center p-2 bg-slate-900 rounded-lg">
                     <input type="checkbox" id="reg-admin" class="ml-2 w-4 h-4 text-amber-500 cursor-pointer">
-                    <label for="reg-admin" class="text-sm font-bold text-amber-400 cursor-pointer">إنشاء حساب مسؤول (آدمن)</label>
+                    <label for="reg-admin" class="text-sm font-bold text-amber-400 cursor-pointer">إنشاء حساب مسؤول</label>
                 </div>
                 <div id="admin-code-box" class="hidden bg-red-950/20 p-3 rounded-lg border border-red-500/30">
-                    <label class="block text-sm mb-1 text-red-400 font-bold">كلمة سر صلاحية الآدمن المطلوبة</label>
+                    <label class="block text-sm mb-1 text-red-400 font-bold">كلمة سر صلاحية الآدمن</label>
                     <input type="password" id="reg-admin-code" class="w-full p-2 rounded-lg bg-slate-900 border border-red-500 text-white">
                 </div>
                 <button type="submit" class="w-full py-2.5 bg-green-600 hover:bg-green-700 font-bold rounded-lg text-white transition shadow-lg cursor-pointer">تأكيد التسجيل</button>
@@ -470,6 +612,11 @@
                 </div>
             </div>
             
+            <div class="mb-6 bg-slate-900 p-4 rounded-xl border border-slate-700">
+                <h4 class="font-bold text-amber-400 mb-2 border-b border-slate-700 pb-1">🔔 الإشعارات والجوائز</h4>
+                <div id="student-notifications-list" class="space-y-2 max-h-40 overflow-y-auto"></div>
+            </div>
+
             <p class="text-sm text-center mb-4 bg-amber-500/10 text-amber-400 p-2 rounded border border-amber-500/20">اختر صلواتك التي أديتها اليوم لتحديث نقاطك:</p>
             <div id="prayers-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
             
@@ -499,30 +646,79 @@
                     </table>
                 </div>
             </div>
+        </section>
 
-            <div id="detail-box" class="hidden bg-slate-800 p-6 rounded-2xl border-2 border-amber-500 shadow-2xl space-y-4">
-                <h3 class="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">بيانات تفصيلية للتحكم بالطالب</h3>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-slate-900 p-4 rounded-xl">
+        <!-- نافذة الآدمن المنبثقة (Modal) اللي تطلع فوق كل شيء -->
+        <div id="admin-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-800 p-6 rounded-2xl border-2 border-amber-500 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+                <button onclick="closeAdminModal()" class="absolute top-4 left-4 text-slate-400 hover:text-red-500 text-3xl font-bold cursor-pointer">&times;</button>
+                
+                <h3 class="text-xl font-bold text-amber-400 border-b border-slate-700 pb-2 mb-4">ملف الطالب</h3>
+                
+                <!-- التفاصيل الأساسية -->
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-slate-900 p-4 rounded-xl mb-4">
                     <p><span class="text-slate-400 block">الاسم:</span> <strong id="det-name" class="text-white text-base"></strong></p>
-                    <p><span class="text-slate-400 block">المعرّف (التواصل):</span> <strong id="det-id" class="text-slate-200 font-mono"></strong></p>
+                    <p><span class="text-slate-400 block">المعرّف:</span> <strong id="det-id" class="text-slate-200 font-mono"></strong></p>
                     <p><span class="text-slate-400 block text-red-400 font-bold">كلمة السر:</span> <strong id="det-pass" class="text-red-400 font-mono text-base"></strong></p>
                     <p><span class="text-slate-400 block">تاريخ الميلاد:</span> <strong id="det-dob" class="text-white"></strong></p>
                     <p><span class="text-slate-400 block">الجنس:</span> <strong id="det-gender" class="text-white"></strong></p>
                     <p><span class="text-slate-400 block">النقاط الحالية:</span> <strong id="det-points" class="text-green-400 font-mono text-lg"></strong></p>
                 </div>
 
-                <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
-                    <h4 class="text-sm font-bold text-amber-400 mb-1">📋 مصدر نقاط صلوات الطالب (بالأيام):</h4>
-                    <div id="admin-history-table" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
+                <!-- إضافة / خصم النقاط -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-4">
+                    <h4 class="font-bold text-amber-400 mb-2">⚖️ تعديل النقاط (ينحفظ بالسجل)</h4>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <input type="number" id="adj-pts-val" placeholder="رقم (مثال: 50 أو -20)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm w-40">
+                        <input type="text" id="adj-note" placeholder="ملاحظة (اختياري)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm flex-1">
+                        <label class="text-sm flex items-center gap-1 cursor-pointer"><input type="checkbox" id="adj-show-admin" checked> إظهار اسمي للآدمنز</label>
+                        <button onclick="submitAdminAdjustment()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded cursor-pointer">نفذ التعديل</button>
+                    </div>
                 </div>
 
-                <div class="flex flex-wrap gap-2 pt-2">
-                    <button id="btn-add-pts" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-xs font-bold text-white rounded-lg cursor-pointer">+ إضافة نقاط</button>
-                    <button id="btn-sub-pts" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-xs font-bold text-white rounded-lg cursor-pointer">- خصم نقاط</button>
-                    <button id="btn-kick" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-xs font-bold text-white rounded-lg cursor-pointer">طرد واستبعاد الطالب 🛑</button>
+                <!-- إرسال إشعار / جائزة -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-4">
+                    <h4 class="font-bold text-amber-400 mb-2">🎁 إرسال إشعار أو جائزة</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                        <select id="notif-type-select" class="p-2 rounded bg-slate-800 border border-slate-600 text-white text-sm">
+                            <option value="رسالة">رسالة إدارية</option>
+                            <option value="جائزة">تبليغ بجائزة</option>
+                        </select>
+                        <input type="text" id="notif-title" placeholder="عنوان الإشعار (مثال: مبروك الفوز!)" class="p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
+                    </div>
+                    <textarea id="notif-body" placeholder="محتوى الإشعار أو تفاصيل الجائزة..." class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm mb-2" rows="2"></textarea>
+                    
+                    <div id="prize-fields" class="hidden mb-2">
+                        <input type="text" id="notif-time" placeholder="وقت التسليم (مثال: غداً بعد العصر)" class="w-full p-2 rounded bg-slate-800 text-white border border-slate-600 text-sm">
+                    </div>
+                    
+                    <div class="flex justify-between items-center">
+                        <label class="text-sm text-slate-300 flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="notif-req-reply"> أطلب من الطالب الرد (مثال: يرسل رقمه)
+                        </label>
+                        <button onclick="sendAdminNotification()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded cursor-pointer">إرسال الإشعار</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- سجل الصلوات والتعديلات -->
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <h4 class="text-sm font-bold text-amber-400 mb-1">📋 سجل الطالب (صلوات وتعديلات):</h4>
+                        <div id="admin-history-table" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
+                    </div>
+                    
+                    <!-- سجل ردود الطالب -->
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <h4 class="text-sm font-bold text-amber-400 mb-1">💬 ردود الطالب على الإشعارات:</h4>
+                        <div id="admin-notif-log" class="overflow-y-auto max-h-48 custom-scrollbar"></div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-slate-700 text-left">
+                    <button onclick="kickStudent()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-sm font-bold text-white rounded-lg cursor-pointer">طرد واستبعاد الطالب 🛑</button>
                 </div>
             </div>
-        </section>
+        </div>
 
     </main>
 </body>
